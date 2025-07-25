@@ -1,0 +1,261 @@
+/*********************** FUNCIONALIDAD 1 ***********************/
+/** ✅ Botón para ingresar una nueva marca en la hoja 'Índice' **/
+function ingresarNuevaMarca() {
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Índice");
+  const filaInicio = 3;
+
+  let filaDestino = filaInicio;
+  while (hoja.getRange(filaDestino, 2).getValue() !== "") filaDestino++;
+
+  const titulo = Browser.inputBox("Título de la marca:");
+  const expediente = Browser.inputBox("Número de expediente:");
+  const registro = Browser.inputBox("Número de registro:");
+  const clase = Browser.inputBox("Clase:");
+  const titular = Browser.inputBox("Titular de la marca:");
+  const contacto = Browser.inputBox("Nombre del contacto:");
+  const direccion = Browser.inputBox("Dirección (sin estado ni país):");
+  const cp = Browser.inputBox("Código Postal:");
+  const estado = Browser.inputBox("Estado:");
+  const pais = Browser.inputBox("País:");
+  const correo = Browser.inputBox("Correo electrónico:");
+
+  const datos = [titulo, expediente, registro, clase, titular, contacto, direccion, cp, estado, pais, correo];
+  hoja.getRange(filaDestino, 2, 1, datos.length).setValues([datos]);
+
+  SpreadsheetApp.getUi().alert("Marca ingresada exitosamente.");
+}
+
+/*********************** FUNCIONALIDAD 2 ***********************/
+/** ✅ Movimiento automático de marcas al ingresar expediente **/
+function onEdit(e) {
+  const hojaEditada = e.source.getActiveSheet();
+  const fila = e.range.getRow();
+  const columna = e.range.getColumn();
+  if (columna !== 3 || fila < 3) return;
+
+  const expediente = e.value;
+  if (!expediente) return;
+
+  const hojaIndice = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Índice");
+  const ultimaFilaIndice = hojaIndice.getLastRow();
+  const datosIndice = hojaIndice.getRange(3, 2, ultimaFilaIndice - 2, 11).getValues();
+  const expBuscado = String(expediente).trim().toLowerCase();
+
+  let filaIndice = -1;
+  for (let i = 0; i < datosIndice.length; i++) {
+    const expIndice = String(datosIndice[i][1]).trim().toLowerCase();
+    if (expIndice === expBuscado) {
+      filaIndice = i + 3;
+      break;
+    }
+  }
+
+  if (filaIndice === -1) {
+    SpreadsheetApp.getUi().alert("Expediente no encontrado en 'Índice'.");
+    return;
+  }
+
+  const datos = hojaIndice.getRange(filaIndice, 2, 1, 11).getValues()[0];
+  const hojaNombre = hojaEditada.getName();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  const hojasProceso = ["Marcas En Proceso", "Marcas En Impedimento Legal", "Marcas Concedidas"];
+  hojasProceso.forEach(nombre => {
+    if (nombre !== hojaNombre && nombre !== "Índice") {
+      const hoja = spreadsheet.getSheetByName(nombre);
+      const datosHoja = hoja.getRange(3, 3, hoja.getLastRow() - 2).getValues();
+      for (let i = 0; i < datosHoja.length; i++) {
+        if (String(datosHoja[i][0]).toString().trim() === String(expediente).toString().trim()) {
+          hoja.deleteRow(i + 3);
+          break;
+        }
+      }
+    }
+  });
+
+  const filaActual = fila;
+  hojaEditada.getRange(filaActual, 2).setValue(datos[0]);
+  hojaEditada.getRange(filaActual, 3).setValue(datos[1]);
+  hojaEditada.getRange(filaActual, 4).setValue(datos[3]);
+  hojaEditada.getRange(filaActual, 5).setValue(datos[4]);
+
+  if (hojaNombre === "Marcas En Proceso") {
+    const fechaPresentacionStr = Browser.inputBox("Fecha de presentación (dd/mm/yyyy):");
+    const fecha = parseFecha(fechaPresentacionStr);
+    if (!fecha) return;
+
+    hojaEditada.getRange(filaActual, 5).setValue(fecha);
+    hojaEditada.getRange(filaActual, 6).setValue(sumarMeses(fecha, 2));
+    hojaEditada.getRange(filaActual, 8).setValue(sumarMeses(fecha, 4));
+    hojaEditada.getRange(filaActual, 10).setValue(sumarMeses(fecha, 6));
+
+    pintarFilaIndice(hojaIndice, filaIndice, "#b4a7d6");
+    agregarValidaciones();
+
+  } else if (hojaNombre === "Marcas En Impedimento Legal") {
+    const fechaContestacionStr = Browser.inputBox("Fecha de contestación (dd/mm/yyyy o 'Pendiente'):");
+    hojaEditada.getRange(filaActual, 6).setValue(fechaContestacionStr);
+
+    const fechaPresentacionStr = Browser.inputBox("Fecha de presentación (dd/mm/yyyy o 'Pendiente'):");
+    hojaEditada.getRange(filaActual, 5).setValue(fechaPresentacionStr);
+
+    const fechaContestacion = parseFecha(fechaContestacionStr);
+    if (fechaContestacion) {
+      hojaEditada.getRange(filaActual, 7).setValue(sumarMeses(fechaContestacion, 2));
+      hojaEditada.getRange(filaActual, 9).setValue(sumarMeses(fechaContestacion, 4));
+    }
+
+    const fechaPresentacion = parseFecha(fechaPresentacionStr);
+    if (fechaPresentacion) {
+      hojaEditada.getRange(filaActual, 11).setValue(sumarMeses(fechaPresentacion, 6));
+    }
+
+    pintarFilaIndice(hojaIndice, filaIndice, "#ffd966");
+
+  } else if (hojaNombre === "Marcas Concedidas") {
+    const registro = Browser.inputBox("Número de registro:");
+    const fechaConcesionStr = Browser.inputBox("Fecha de concesión (dd/mm/yyyy):");
+    const fecha = parseFecha(fechaConcesionStr);
+    if (!fecha) return;
+
+    hojaEditada.getRange(filaActual, 4).setValue(registro);
+    hojaEditada.getRange(filaActual, 5).setValue(datos[3]);
+    hojaEditada.getRange(filaActual, 6).setValue(fecha);
+    hojaEditada.getRange(filaActual, 7).setValue(sumarAnios(fecha, 3));
+    hojaEditada.getRange(filaActual, 9).setValue(sumarAnios(fecha, 10));
+
+    hojaIndice.getRange(filaIndice, 4).setValue(registro);
+    pintarFilaIndice(hojaIndice, filaIndice, "#93c47d");
+  }
+}
+
+/*********************** FUNCIONES AUXILIARES ***********************/
+function sumarMeses(fecha, meses) {
+  const nueva = new Date(fecha);
+  const diaOriginal = nueva.getDate();
+  nueva.setMonth(nueva.getMonth() + meses);
+  while (nueva.getDate() < diaOriginal) {
+    nueva.setDate(nueva.getDate() - 1);
+  }
+  return nueva;
+}
+
+function sumarAnios(fecha, anios) {
+  const nueva = new Date(fecha);
+  nueva.setFullYear(nueva.getFullYear() + anios);
+  return nueva;
+}
+
+function parseFecha(fechaStr) {
+  if (!fechaStr) return null;
+  
+  if (Object.prototype.toString.call(fechaStr) === "[object Date]" && !isNaN(fechaStr)) {
+    return fechaStr;
+  }
+
+  if (typeof fechaStr === "string" && fechaStr.toLowerCase().includes("pendiente")) return null;
+
+  const partes = fechaStr.split("/");
+  if (partes.length !== 3) return null;
+  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
+}
+
+
+function pintarFilaIndice(hoja, fila, colorHex) {
+  hoja.getRange(fila, 2, 1, 12).setBackground(colorHex);
+}
+
+/*********************** NUEVO: Menú desplegable automático ***********************/
+function agregarValidaciones() {
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Marcas En Proceso");
+  const ultimaFila = hoja.getLastRow();
+  const reglas = SpreadsheetApp.newDataValidation().requireValueInList(["Enviado", "No Enviado", "Pendiente", "No enviar"], true).build();
+  hoja.getRange(3, 7, ultimaFila - 2).setDataValidation(reglas); // Columna G
+  hoja.getRange(3, 9, ultimaFila - 2).setDataValidation(reglas); // Columna I
+}
+
+/*********************** NUEVO: Automatización envío de reportes ***********************/
+// Automatización envío de reportes corregida:
+function enviarReportesMarcasEnProceso() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hojaProceso = ss.getSheetByName("Marcas En Proceso");
+  const hojaIndice = ss.getSheetByName("Índice");
+  const hoy = new Date();
+
+  const datosProceso = hojaProceso.getDataRange().getValues();
+  const datosIndice = hojaIndice.getDataRange().getValues();
+
+  for (let i = 2; i < datosProceso.length; i++) {
+    const fila = datosProceso[i];
+    const expediente = fila[2];
+    if (!expediente) continue;
+
+    const filaIndice = datosIndice.find(r => r[2] === expediente);
+    if (!filaIndice) continue;
+
+    const estatus1 = fila[6];
+    const estatus2 = fila[8];
+    const fecha1 = parseFecha(fila[5]);
+    const fecha2 = parseFecha(fila[7]);
+
+    if (esHoy(fecha1) && estatus1 !== "No enviar" && estatus1 !== "Enviado") {
+      const exito = crearYEnviarReporte("1F3pvLkH2mis0BfTchF4E_ZoLFiTD5wUkFMvJsgFlBJw", filaIndice, expediente);
+      hojaProceso.getRange(i + 1, 7).setValue(exito ? "Enviado" : "No Enviado");
+    }
+    if (esHoy(fecha2) && estatus2 !== "No enviar" && estatus2 !== "Enviado") {
+      const exito = crearYEnviarReporte("1SpvpcRbRcm7kOBRfO316C7NFxD_yx76cxfE1vPojPqA", filaIndice, expediente);
+      hojaProceso.getRange(i + 1, 9).setValue(exito ? "Enviado" : "No Enviado");
+    }
+  }
+}
+
+// ✅ Función corregida y robusta para crear y enviar reportes:
+function crearYEnviarReporte(idPlantilla, datos, expediente) {
+  try {
+    const file = DriveApp.getFileById(idPlantilla);
+    const copia = file.makeCopy("Reporte - " + expediente);
+    const doc = DocumentApp.openById(copia.getId());
+    let body = doc.getBody();
+
+    const reemplazos = {
+      "<<TÍTULO DE MARCA>>": datos[1],
+      "<<EXPEDIENTE>>": datos[2],
+      "<<REGISTRO>>": datos[3],
+      "<<CLASE>>": datos[4],
+      "<<TITULAR>>": datos[5],
+      "<<PRIMER NOMBRE CONTACTO>>": String(datos[6]).split(" ")[0],
+      "<<DIRECCIÓN>>": String(datos[7]).replace(/,/g, "\n"),
+      "<<C.P>>": datos[8],
+      "<<ESTADO>>": datos[9],
+      "<<PAIS>>": datos[10],
+      "<<FECHA CONCESIÓN>>": datos[11] || "",
+      "<<FECHA DE USO>>": datos[12] || "",
+      "<<FECHA VIGENCIA>>": datos[13] || ""
+    };
+
+    for (let clave in reemplazos) {
+      body.replaceText(clave, reemplazos[clave]);
+    }
+
+    doc.saveAndClose();
+    const pdf = copia.getAs(MimeType.PDF);
+    const correo = datos[11]; // ✅ Correo correcto: columna L = índice 11
+    MailApp.sendEmail({
+      to: correo,
+      subject: "Reporte de Marca: " + datos[1],
+      body: "Adjunto el reporte correspondiente.",
+      attachments: [pdf]
+    });
+
+    return true;
+  } catch (e) {
+    Logger.log("❌ Error al generar/enviar el reporte para expediente " + expediente + ": " + e);
+    return false;
+  }
+}
+
+function esHoy(fecha) {
+  if (!fecha) return false;
+  const hoy = new Date();
+  return fecha.getDate() === hoy.getDate() && fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear();
+}
